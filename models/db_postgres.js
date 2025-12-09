@@ -1,6 +1,6 @@
 // models/db_postgres.js
 
-// Load .env ONLY in development, never in production
+// Load .env ONLY in development
 if (process.env.NODE_ENV !== "production") {
   require("dotenv").config();
 }
@@ -17,7 +17,7 @@ if (!connectionString) {
 const pool = new Pool({
   connectionString,
   ssl: {
-    rejectUnauthorized: false,
+    rejectUnauthorized: false, // Required for Render + Supabase
   },
 });
 
@@ -31,4 +31,9 @@ pool.connect()
     console.error("❌ PostgreSQL connection error:", err.message);
   });
 
-module.exports = { pool };
+// IMPORTANT: Add query function
+async function query(text, params) {
+  return pool.query(text, params);
+}
+
+module.exports = { pool, query };
