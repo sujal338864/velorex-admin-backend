@@ -2,66 +2,68 @@ const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 const upload = multer({ storage: multer.memoryStorage() });
-
 const supabase = require("../models/supabaseClient");
-const db = require("../models/db_postgres"); // PostgreSQL ONLY
+const { sql, poolPromise } = require("../models/db");
 
-/* ========================================
-   Helper: Upload to Supabase
-======================================== */
+// ===========================
+// Helper: Upload to Supabase
+// ===========================
 async function uploadToSupabase(file) {
   const fileName = `${Date.now()}_${file.originalname}`;
-
   const { data, error } = await supabase.storage
     .from("posters")
     .upload(`posters/${fileName}`, file.buffer, {
       contentType: file.mimetype,
       upsert: false,
     });
-
   if (error) throw error;
-
-  return supabase.storage
-    .from("posters")
-    .getPublicUrl(data.fullPath).data.publicUrl;
+  return `https://zyryndjeojrzvoubsqsg.supabase.co/storage/v1/object/public/${data.fullPath}`;
 }
 
-/* ========================================
-   POST /api/posters
-======================================== */
+// ===========================
+// POST /api/posters
+// ===========================
 router.post("/", upload.array("images", 5), async (req, res) => {
   try {
     const { title, imageUrls } = req.body;
+    const pool = await poolPromise;
     let finalImageUrls = [];
 
-    if (req.files?.length > 0) {
+    // Case 1: Multipart file upload
+    if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         const url = await uploadToSupabase(file);
         finalImageUrls.push(url);
       }
-    } else if (imageUrls) {
-      try {
-        const parsed = JSON.parse(imageUrls);
-        finalImageUrls = Array.isArray(parsed) ? parsed : [parsed];
-      } catch {
-        finalImageUrls = [imageUrls];
+    }
+    // Case 2: Image URLs from Flutter
+    else if (imageUrls) {
+      if (typeof imageUrls === "string") {
+        try {
+          const parsed = JSON.parse(imageUrls);
+          finalImageUrls = Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          finalImageUrls = [imageUrls];
+        }
+      } else {
+        finalImageUrls = Array.isArray(imageUrls) ? imageUrls : [imageUrls];
       }
     }
 
     if (!title || finalImageUrls.length === 0) {
-      return res.status(400).json({
-        error: "Title and at least one image required",
-      });
+      return res.status(400).json({ error: "Title and image are required" });
     }
 
-    await db.query(
-      `INSERT INTO posters (title, imageUrl, createdAt)
-       VALUES ($1, $2, NOW())`,
-      [title, finalImageUrls[0]]
-    );
+    const request = pool.request();
+    request.input("title", sql.NVarChar, title);
+    request.input("imageUrl", sql.NVarChar, finalImageUrls[0]);
+    await request.query(`
+      INSERT INTO posters (title, imageUrl, createdAt)
+      VALUES (@title, @imageUrl, GETDATE());
+    `);
 
     res.status(201).json({
-      message: "Poster added successfully",
+      message: "✅ Poster added successfully",
       imageUrl: finalImageUrls[0],
     });
   } catch (err) {
@@ -70,143 +72,34 @@ router.post("/", upload.array("images", 5), async (req, res) => {
   }
 });
 
-/* ========================================
-   GET posters
-======================================== */
+// ===========================
+// GET /api/posters
+// ===========================
 router.get("/", async (req, res) => {
   try {
-    const result = await db.query(
-      `SELECT * FROM posters ORDER BY id DESC`
-    );
-
-    res.json(result.rows);
+    const pool = await poolPromise;
+    const result = await pool.request().query("SELECT * FROM posters ORDER BY id DESC");
+    res.status(200).json(result.recordset);
   } catch (err) {
-    console.error("❌ Error fetching posters:", err);
-    res.status(500).json({ error: err.message });
+    console.error("❌ Error fetching posters:", err.message);
+    res.status(500).json({ error: "Failed to fetch posters" });
   }
 });
 
-/* ========================================
-   DELETE poster
-======================================== */
+// ✅ DELETE poster
 router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-
-    await db.query(`DELETE FROM posters WHERE id = $1`, [id]);
-
-    res.json({ message: "Poster deleted successfully" });
+    const pool = await poolPromise;
+    await pool.request().query(`DELETE FROM posters WHERE id = ${id}`);
+    res.status(200).json({ message: "Poster deleted successfully" });
   } catch (err) {
-    console.error("❌ Error deleting poster:", err);
-    res.status(500).json({ error: err.message });
+    console.error("❌ Error deleting poster:", err.message);
+    res.status(500).json({ error: "Failed to delete poster" });
   }
 });
 
 module.exports = router;
-
-
-// const express = require("express");
-// const router = express.Router();
-// const multer = require("multer");
-// const upload = multer({ storage: multer.memoryStorage() });
-// const supabase = require("../models/supabaseClient");
-// const { sql, poolPromise } = require("../models/db");
-
-// // ===========================
-// // Helper: Upload to Supabase
-// // ===========================
-// async function uploadToSupabase(file) {
-//   const fileName = `${Date.now()}_${file.originalname}`;
-//   const { data, error } = await supabase.storage
-//     .from("posters")
-//     .upload(`posters/${fileName}`, file.buffer, {
-//       contentType: file.mimetype,
-//       upsert: false,
-//     });
-//   if (error) throw error;
-//   return `https://zyryndjeojrzvoubsqsg.supabase.co/storage/v1/object/public/${data.fullPath}`;
-// }
-
-// // ===========================
-// // POST /api/posters
-// // ===========================
-// router.post("/", upload.array("images", 5), async (req, res) => {
-//   try {
-//     const { title, imageUrls } = req.body;
-//     const pool = await poolPromise;
-//     let finalImageUrls = [];
-
-//     // Case 1: Multipart file upload
-//     if (req.files && req.files.length > 0) {
-//       for (const file of req.files) {
-//         const url = await uploadToSupabase(file);
-//         finalImageUrls.push(url);
-//       }
-//     }
-//     // Case 2: Image URLs from Flutter
-//     else if (imageUrls) {
-//       if (typeof imageUrls === "string") {
-//         try {
-//           const parsed = JSON.parse(imageUrls);
-//           finalImageUrls = Array.isArray(parsed) ? parsed : [parsed];
-//         } catch {
-//           finalImageUrls = [imageUrls];
-//         }
-//       } else {
-//         finalImageUrls = Array.isArray(imageUrls) ? imageUrls : [imageUrls];
-//       }
-//     }
-
-//     if (!title || finalImageUrls.length === 0) {
-//       return res.status(400).json({ error: "Title and image are required" });
-//     }
-
-//     const request = pool.request();
-//     request.input("title", sql.NVarChar, title);
-//     request.input("imageUrl", sql.NVarChar, finalImageUrls[0]);
-//     await request.query(`
-//       INSERT INTO posters (title, imageUrl, createdAt)
-//       VALUES (@title, @imageUrl, GETDATE());
-//     `);
-
-//     res.status(201).json({
-//       message: "✅ Poster added successfully",
-//       imageUrl: finalImageUrls[0],
-//     });
-//   } catch (err) {
-//     console.error("❌ Error adding poster:", err);
-//     res.status(500).json({ error: err.message });
-//   }
-// });
-
-// // ===========================
-// // GET /api/posters
-// // ===========================
-// router.get("/", async (req, res) => {
-//   try {
-//     const pool = await poolPromise;
-//     const result = await pool.request().query("SELECT * FROM posters ORDER BY id DESC");
-//     res.status(200).json(result.recordset);
-//   } catch (err) {
-//     console.error("❌ Error fetching posters:", err.message);
-//     res.status(500).json({ error: "Failed to fetch posters" });
-//   }
-// });
-
-// // ✅ DELETE poster
-// router.delete("/:id", async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const pool = await poolPromise;
-//     await pool.request().query(`DELETE FROM posters WHERE id = ${id}`);
-//     res.status(200).json({ message: "Poster deleted successfully" });
-//   } catch (err) {
-//     console.error("❌ Error deleting poster:", err.message);
-//     res.status(500).json({ error: "Failed to delete poster" });
-//   }
-// });
-
-// module.exports = router;
 
 
 // // routes/posters.js

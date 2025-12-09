@@ -1,208 +1,217 @@
-// routes/dashboard.routes.js
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const pg = require("../models/db_postgres"); // PostgreSQL ONLY
+const { poolPromise } = require('../db');
 
+router.get('/', async (_, res) => {
+  try {
+    const pool = await poolPromise;
+    const products = await pool.request().query('SELECT COUNT(*) AS count FROM Products');
+    const categories = await pool.request().query('SELECT COUNT(*) AS count FROM Categories');
+    const subcategories = await pool.request().query('SELECT COUNT(*) AS count FROM Subcategories');
+
+    res.json({
+      products: products.recordset[0].count,
+      categories: categories.recordset[0].count,
+      subcategories: subcategories.recordset[0].count
+    });
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pool = await poolPromise;
+
+    const result = await pool.request()
+      .input('ProductID', sql.Int, id) // ✅ Explicit type
+      .query('DELETE FROM Products WHERE ProductID = @ProductID');
+
+    if (result.rowsAffected[0] > 0) {
+      res.json({ message: `Product ${id} deleted successfully` });
+    } else {
+      res.status(404).json({ error: 'Product not found' });
+    }
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
+/**
+ * Helper to safely parse integer query params
+ */
 function toInt(v, defVal) {
   const n = parseInt(v, 10);
   return Number.isNaN(n) ? defVal : n;
 }
 
 /* =========================================================
-   GET /api/dashboard
-   Simple counts for products, categories, subcategories
-========================================================= */
-router.get("/", async (_, res) => {
-  try {
-    const q1 = await pg.query("SELECT COUNT(*) AS count FROM products");
-    const q2 = await pg.query("SELECT COUNT(*) AS count FROM categories");
-    const q3 = await pg.query("SELECT COUNT(*) AS count FROM subcategories");
-
-    res.json({
-      products: Number(q1.rows[0].count),
-      categories: Number(q2.rows[0].count),
-      subcategories: Number(q3.rows[0].count),
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* =========================================================
-   DELETE product
-========================================================= */
-router.delete("/:id", async (req, res) => {
-  try {
-    const id = req.params.id;
-
-    const result = await pg.query(
-      "DELETE FROM products WHERE productid = $1",
-      [id]
-    );
-
-    if (result.rowCount > 0) {
-      res.json({ message: `Product ${id} deleted successfully` });
-    } else {
-      res.status(404).json({ error: "Product not found" });
-    }
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* =========================================================
    GET /api/dashboard/summary
-========================================================= */
+   - product counts
+   - order counts by status
+   - total revenue
+   ========================================================= */
 router.get("/summary", async (req, res) => {
   try {
-    // ----- Product Inventory Stats -----
-    const productQ = await pg.query(`
+    const pool = await poolPromise;
+
+    // ---------- PRODUCT STATS ----------
+    const productQ = await pool.request().query(`
       SELECT
         COUNT(*) AS totalProducts,
-        SUM(CASE WHEN stock <= 0 THEN 1 ELSE 0 END) AS outOfStockProducts,
-        SUM(CASE WHEN stock > 0 AND stock <= 5 THEN 1 ELSE 0 END) AS lowStockProducts,
-        SUM(CASE WHEN stock > 5 THEN 1 ELSE 0 END) AS inStockProducts
-      FROM products;
+        SUM(CASE WHEN Stock <= 0 THEN 1 ELSE 0 END) AS outOfStockProducts,
+        SUM(CASE WHEN Stock > 0 AND Stock <= 5 THEN 1 ELSE 0 END) AS lowStockProducts,
+        SUM(CASE WHEN Stock > 5 THEN 1 ELSE 0 END) AS inStockProducts
+      FROM Products;
     `);
 
-    const p = productQ.rows[0];
+    const p = productQ.recordset[0] || {};
 
-    // ----- Order Stats -----
-    const orderQ = await pg.query(`
+    // ---------- ORDER STATS ----------
+    // adjust status strings if your Orders.Status is different
+    const orderQ = await pool.request().query(`
       SELECT
         COUNT(*) AS totalOrders,
-        SUM(CASE WHEN orderstatus = 'Pending' THEN 1 ELSE 0 END) AS pendingOrders,
-        SUM(CASE WHEN orderstatus = 'Processed' THEN 1 ELSE 0 END) AS processedOrders,
-        SUM(CASE WHEN orderstatus = 'Shipped' THEN 1 ELSE 0 END) AS shippedOrders,
-        SUM(CASE WHEN orderstatus = 'Delivered' THEN 1 ELSE 0 END) AS deliveredOrders,
-        SUM(CASE WHEN orderstatus = 'Cancelled' THEN 1 ELSE 0 END) AS cancelledOrders,
-        SUM(CASE WHEN orderstatus IN ('Shipped','Delivered','Processed')
-                 THEN totalamount ELSE 0 END) AS totalRevenue
-      FROM orders;
+        SUM(CASE WHEN Status = 'Pending'   THEN 1 ELSE 0 END) AS pendingOrders,
+        SUM(CASE WHEN Status = 'Processed' THEN 1 ELSE 0 END) AS processedOrders,
+        SUM(CASE WHEN Status = 'Shipped'   THEN 1 ELSE 0 END) AS shippedOrders,
+        SUM(CASE WHEN Status = 'Delivered' THEN 1 ELSE 0 END) AS deliveredOrders,
+        SUM(CASE WHEN Status = 'Cancelled' THEN 1 ELSE 0 END) AS cancelledOrders,
+        SUM(CASE WHEN Status IN ('Shipped','Delivered','Processed')
+                 THEN TotalAmount ELSE 0 END) AS totalRevenue
+      FROM Orders;
     `);
 
-    const o = orderQ.rows[0];
+    const o = orderQ.recordset[0] || {};
 
     res.json({
       products: {
-        total: Number(p.totalproducts || 0),
-        outOfStock: Number(p.outofstockproducts || 0),
-        lowStock: Number(p.lowstockproducts || 0),
-        inStock: Number(p.instockproducts || 0),
+        total: p.totalProducts || 0,
+        outOfStock: p.outOfStockProducts || 0,
+        lowStock: p.lowStockProducts || 0,
+        inStock: p.inStockProducts || 0,
       },
       orders: {
-        total: Number(o.totalorders || 0),
-        pending: Number(o.pendingorders || 0),
-        processed: Number(o.processedorders || 0),
-        shipped: Number(o.shippedorders || 0),
-        delivered: Number(o.deliveredorders || 0),
-        cancelled: Number(o.cancelledorders || 0),
-        totalRevenue: Number(o.totalrevenue || 0),
+        total: o.totalOrders || 0,
+        pending: o.pendingOrders || 0,
+        processed: o.processedOrders || 0,
+        shipped: o.shippedOrders || 0,
+        delivered: o.deliveredOrders || 0,
+        cancelled: o.cancelledOrders || 0,
+        totalRevenue: Number(o.totalRevenue || 0),
       },
     });
   } catch (err) {
-    console.error("❌ summary error:", err);
+    console.error("❌ dashboard /summary error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 /* =========================================================
    GET /api/dashboard/orders-by-day?days=7
-========================================================= */
+   - line chart data
+   ========================================================= */
 router.get("/orders-by-day", async (req, res) => {
   try {
-    const days = toInt(req.query.days, 7);
+    const days = toInt(req.query.days, 7); // default last 7 days
+    const pool = await poolPromise;
 
-    const q = await pg.query(
-      `
-      SELECT
-        CAST(createdat AS DATE) AS orderdate,
-        COUNT(*) AS ordercount,
-        SUM(totalamount) AS totalamount
-      FROM orders
-      WHERE createdat >= CURRENT_DATE - $1::INT
-      GROUP BY CAST(createdat AS DATE)
-      ORDER BY orderdate;
-      `,
-      [days]
-    );
+    const q = await pool.request()
+      .input("days", sql.Int, days)
+      .query(`
+        SELECT
+          CONVERT(date, CreatedAt) AS OrderDate,
+          COUNT(*) AS OrderCount,
+          SUM(TotalAmount) AS TotalAmount
+        FROM Orders
+        WHERE CreatedAt >= DATEADD(day, -@days, CAST(GETDATE() AS date))
+        GROUP BY CONVERT(date, CreatedAt)
+        ORDER BY OrderDate;
+      `);
 
-    const data = q.rows.map((r) => ({
-      date: r.orderdate,
-      count: Number(r.ordercount),
-      amount: Number(r.totalamount || 0),
+    // map to simple array for Flutter
+    const data = q.recordset.map(row => ({
+      date: row.OrderDate,
+      count: row.OrderCount,
+      amount: Number(row.TotalAmount || 0),
     }));
 
     res.json(data);
   } catch (err) {
-    console.error("❌ orders-by-day error:", err);
+    console.error("❌ dashboard /orders-by-day error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 /* =========================================================
    GET /api/dashboard/stock-distribution
-========================================================= */
+   - pie chart for stock buckets
+   ========================================================= */
 router.get("/stock-distribution", async (req, res) => {
   try {
-    const q = await pg.query(`
+    const pool = await poolPromise;
+
+    const q = await pool.request().query(`
       SELECT
-        SUM(CASE WHEN stock <= 0 THEN 1 ELSE 0 END) AS outOfStock,
-        SUM(CASE WHEN stock BETWEEN 1 AND 5 THEN 1 ELSE 0 END) AS lowStock,
-        SUM(CASE WHEN stock BETWEEN 6 AND 20 THEN 1 ELSE 0 END) AS mediumStock,
-        SUM(CASE WHEN stock > 20 THEN 1 ELSE 0 END) AS highStock
-      FROM products;
+        SUM(CASE WHEN Stock <= 0 THEN 1 ELSE 0 END) AS outOfStock,
+        SUM(CASE WHEN Stock BETWEEN 1 AND 5 THEN 1 ELSE 0 END) AS lowStock,
+        SUM(CASE WHEN Stock BETWEEN 6 AND 20 THEN 1 ELSE 0 END) AS mediumStock,
+        SUM(CASE WHEN Stock > 20 THEN 1 ELSE 0 END) AS highStock
+      FROM Products;
     `);
 
-    const r = q.rows[0];
+    const r = q.recordset[0] || {};
 
     res.json({
-      outOfStock: Number(r.outofstock || 0),
-      lowStock: Number(r.lowstock || 0),
-      mediumStock: Number(r.mediumstock || 0),
-      highStock: Number(r.highstock || 0),
+      outOfStock: r.outOfStock || 0,
+      lowStock: r.lowStock || 0,
+      mediumStock: r.mediumStock || 0,
+      highStock: r.highStock || 0,
     });
   } catch (err) {
-    console.error("❌ stock-distribution error:", err);
+    console.error("❌ dashboard /stock-distribution error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 /* =========================================================
    GET /api/dashboard/top-products?limit=5
-========================================================= */
+   - best selling products (for table / side widget)
+   ========================================================= */
 router.get("/top-products", async (req, res) => {
   try {
     const limit = toInt(req.query.limit, 5);
+    const pool = await poolPromise;
 
-    const q = await pg.query(
-      `
-      SELECT
-        p.productid,
-        p.name,
-        SUM(oi.quantity) AS totalqty,
-        SUM(oi.price * oi.quantity) AS totalsales
-      FROM orderitems oi
-      INNER JOIN products p ON oi.productid = p.productid
-      GROUP BY p.productid, p.name
-      ORDER BY totalqty DESC
-      LIMIT $1;
-      `,
-      [limit]
-    );
+    // ⚠️ adjust OrderItems table + column names if different
+    const q = await pool.request()
+      .input("limit", sql.Int, limit)
+      .query(`
+        SELECT TOP (@limit)
+          p.ProductID,
+          p.Name,
+          SUM(oi.Quantity) AS TotalQty,
+          SUM(oi.LineTotal) AS TotalSales
+        FROM OrderItems oi
+        INNER JOIN Products p ON oi.ProductID = p.ProductID
+        GROUP BY p.ProductID, p.Name
+        ORDER BY TotalQty DESC;
+      `);
 
-    const data = q.rows.map((row) => ({
-      productId: row.productid,
-      name: row.name,
-      totalQty: Number(row.totalqty),
-      totalSales: Number(row.totalsales || 0),
+    const data = q.recordset.map(row => ({
+      productId: row.ProductID,
+      name: row.Name,
+      totalQty: row.TotalQty,
+      totalSales: Number(row.TotalSales || 0),
     }));
 
     res.json(data);
   } catch (err) {
-    console.error("❌ top-products error:", err);
+    console.error("❌ dashboard /top-products error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 module.exports = router;
+
