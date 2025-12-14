@@ -1,29 +1,45 @@
-// models/db.js
-const sql = require("mssql");
+const { Pool } = require("pg");
 require("dotenv").config();
 
-const config = {
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  server: process.env.DB_SERVER,
-  database: process.env.DB_DATABASE,
-  options: {
-    encrypt: process.env.DB_ENCRYPT === "true",
-    trustServerCertificate: true, // allow self-signed certs
-  },
-};
+const pool = new Pool({
+  host: process.env.SUPABASE_DB_HOST,
+  port: Number(process.env.SUPABASE_DB_PORT),
+  user: process.env.SUPABASE_DB_USER,
+  password: process.env.SUPABASE_DB_PASSWORD,
+  database: process.env.SUPABASE_DB_NAME,
+  ssl: { rejectUnauthorized: false },
+});
 
-const poolPromise = new sql.ConnectionPool(config)
-  .connect()
-  .then(pool => {
-    console.log("✅ Connected to SQL Server:", process.env.DB_DATABASE);
-    return pool;
-  })
-  .catch(err => {
-    console.error("❌ Database Connection Failed:", err);
-  });
+module.exports = pool;
 
-module.exports = {
-  sql,
-  poolPromise,
-};
+
+
+// // models/db.js
+// const sql = require("mssql");
+// require("dotenv").config();
+
+// const config = {
+//   user: process.env.DB_USER,
+//   password: process.env.DB_PASSWORD,
+//   server: process.env.DB_SERVER,
+//   database: process.env.DB_DATABASE,
+//   options: {
+//     encrypt: process.env.DB_ENCRYPT === "true",
+//     trustServerCertificate: true, // allow self-signed certs
+//   },
+// };
+
+// const poolPromise = new sql.ConnectionPool(config)
+//   .connect()
+//   .then(pool => {
+//     console.log("✅ Connected to SQL Server:", process.env.DB_DATABASE);
+//     return pool;
+//   })
+//   .catch(err => {
+//     console.error("❌ Database Connection Failed:", err);
+//   });
+
+// module.exports = {
+//   sql,
+//   poolPromise,
+// };

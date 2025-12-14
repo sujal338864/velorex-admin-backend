@@ -1,129 +1,98 @@
-
 // routes/brands.js
-const express = require('express');
-const sql = require('mssql');
-const path = require('path');
-const multer = require('multer');
+const express = require("express");
 const router = express.Router();
-const { poolPromise } = require('../models/db');
-
-// ⚠️ Make sure your Brands table has:
-// BrandID (PK), Name, CategoryID (INT, NULL OK), SubcategoryID (INT), CreatedAt (default GETDATE())
-
-// Multer setup (if you later add images)
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/brands/');
-  },
-  filename: function (req, file, cb) {
-    cb(null, 'brand-' + Date.now() + path.extname(file.originalname));
-  },
-});
-const upload = multer({ storage });
+const pool = require("../models/db");
 
 /**
  * ===============================
  *  GET /api/brands  → List brands
  * ===============================
  */
-router.get('/', async (_, res) => {
+router.get("/", async (req, res) => {
   try {
-    const pool = await poolPromise;
-
-    const result = await pool.request().query(`
+    const result = await pool.query(`
       SELECT 
-        b.BrandID,
-        b.Name,
-        b.CategoryID,
-        b.SubcategoryID,
-        b.CreatedAt,
-        ISNULL(c.Name, '') AS CategoryName,
-        ISNULL(s.Name, '') AS SubcategoryName
-      FROM Brands b
-      LEFT JOIN Categories c ON b.CategoryID = c.CategoryID
-      LEFT JOIN Subcategories s ON b.SubcategoryID = s.SubcategoryID
-      ORDER BY b.BrandID ASC;
+        b.brand_id,
+        b.name,
+        b.category_id,
+        b.subcategory_id,
+        b.created_at,
+        COALESCE(c.name, '') AS category_name,
+        COALESCE(s.name, '') AS subcategory_name
+      FROM brands b
+      LEFT JOIN categories c ON b.category_id = c.category_id
+      LEFT JOIN subcategories s ON b.subcategory_id = s.subcategory_id
+      ORDER BY b.brand_id ASC
     `);
 
-    res.status(200).json(result.recordset);
+    res.status(200).json(result.rows);
   } catch (err) {
-    console.error('❌ GET /brands:', err);
+    console.error("❌ GET /brands:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
 /**
  * ===============================
- *  POST /api/brands  → Create brand
+ *  POST /api/brands → Create brand
  * ===============================
  * body: { name, categoryId, subcategoryId }
  */
-router.post('/', async (req, res) => {
+router.post("/", async (req, res) => {
+  const { name, categoryId, subcategoryId } = req.body;
+
+  if (!name || !subcategoryId) {
+    return res
+      .status(400)
+      .json({ message: "Name and subcategoryId are required" });
+  }
+
   try {
-    const { name, categoryId, subcategoryId } = req.body;
+    await pool.query(
+      `
+      INSERT INTO brands (name, category_id, subcategory_id)
+      VALUES ($1, $2, $3)
+      `,
+      [name, categoryId || null, subcategoryId]
+    );
 
-    if (!name || !subcategoryId) {
-      return res
-        .status(400)
-        .json({ message: 'Name and subcategoryId are required' });
-    }
-
-    const pool = await poolPromise;
-
-    await pool
-      .request()
-      .input('name', sql.NVarChar, name)
-      .input('categoryId', sql.Int, categoryId || null)
-      .input('subcategoryId', sql.Int, subcategoryId)
-      .query(`
-        INSERT INTO Brands (Name, CategoryID, SubcategoryID, CreatedAt)
-        VALUES (@name, @categoryId, @subcategoryId, GETDATE());
-      `);
-
-    res.status(201).json({ message: 'Brand created successfully' });
+    res.status(201).json({ message: "Brand created successfully" });
   } catch (err) {
-    console.error('❌ POST /brands:', err);
+    console.error("❌ POST /brands:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
 /**
  * ===============================
- *  PUT /api/brands/:id  → Update brand
+ *  PUT /api/brands/:id → Update brand
  * ===============================
- * body: { name, categoryId, subcategoryId }
  */
-router.put('/:id', async (req, res) => {
+router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const { name, categoryId, subcategoryId } = req.body;
 
   if (!name || !subcategoryId) {
     return res
       .status(400)
-      .json({ message: 'Name and subcategoryId are required' });
+      .json({ message: "Name and subcategoryId are required" });
   }
 
   try {
-    const pool = await poolPromise;
+    await pool.query(
+      `
+      UPDATE brands
+      SET name = $1,
+          category_id = $2,
+          subcategory_id = $3
+      WHERE brand_id = $4
+      `,
+      [name, categoryId || null, subcategoryId, id]
+    );
 
-    await pool
-      .request()
-      .input('id', sql.Int, id)
-      .input('name', sql.NVarChar, name)
-      .input('categoryId', sql.Int, categoryId || null)
-      .input('subcategoryId', sql.Int, subcategoryId)
-      .query(`
-        UPDATE Brands 
-        SET 
-          Name = @name,
-          CategoryID = @categoryId,
-          SubcategoryID = @subcategoryId
-        WHERE BrandID = @id;
-      `);
-
-    res.json({ message: 'Brand updated successfully' });
+    res.json({ message: "Brand updated successfully" });
   } catch (err) {
-    console.error('❌ PUT /brands:', err);
+    console.error("❌ PUT /brands:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -133,25 +102,180 @@ router.put('/:id', async (req, res) => {
  *  DELETE /api/brands/:id
  * ===============================
  */
-router.delete('/:id', async (req, res) => {
+router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-    const pool = await poolPromise;
+    await pool.query(
+      `DELETE FROM brands WHERE brand_id = $1`,
+      [id]
+    );
 
-    await pool
-      .request()
-      .input('id', sql.Int, id)
-      .query(`DELETE FROM Brands WHERE BrandID = @id;`);
-
-    res.json({ message: 'Brand deleted successfully' });
+    res.json({ message: "Brand deleted successfully" });
   } catch (err) {
-    console.error('❌ DELETE /brands:', err);
+    console.error("❌ DELETE /brands:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
 module.exports = router;
+
+
+
+
+// // routes/brands.js
+// const express = require('express');
+// const sql = require('mssql');
+// const path = require('path');
+// const multer = require('multer');
+// const router = express.Router();
+// const { poolPromise } = require('../models/db');
+
+// // ⚠️ Make sure your Brands table has:
+// // BrandID (PK), Name, CategoryID (INT, NULL OK), SubcategoryID (INT), CreatedAt (default GETDATE())
+
+// // Multer setup (if you later add images)
+// const storage = multer.diskStorage({
+//   destination: function (req, file, cb) {
+//     cb(null, 'uploads/brands/');
+//   },
+//   filename: function (req, file, cb) {
+//     cb(null, 'brand-' + Date.now() + path.extname(file.originalname));
+//   },
+// });
+// const upload = multer({ storage });
+
+// /**
+//  * ===============================
+//  *  GET /api/brands  → List brands
+//  * ===============================
+//  */
+// router.get('/', async (_, res) => {
+//   try {
+//     const pool = await poolPromise;
+
+//     const result = await pool.request().query(`
+//       SELECT 
+//         b.BrandID,
+//         b.Name,
+//         b.CategoryID,
+//         b.SubcategoryID,
+//         b.CreatedAt,
+//         ISNULL(c.Name, '') AS CategoryName,
+//         ISNULL(s.Name, '') AS SubcategoryName
+//       FROM Brands b
+//       LEFT JOIN Categories c ON b.CategoryID = c.CategoryID
+//       LEFT JOIN Subcategories s ON b.SubcategoryID = s.SubcategoryID
+//       ORDER BY b.BrandID ASC;
+//     `);
+
+//     res.status(200).json(result.recordset);
+//   } catch (err) {
+//     console.error('❌ GET /brands:', err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// /**
+//  * ===============================
+//  *  POST /api/brands  → Create brand
+//  * ===============================
+//  * body: { name, categoryId, subcategoryId }
+//  */
+// router.post('/', async (req, res) => {
+//   try {
+//     const { name, categoryId, subcategoryId } = req.body;
+
+//     if (!name || !subcategoryId) {
+//       return res
+//         .status(400)
+//         .json({ message: 'Name and subcategoryId are required' });
+//     }
+
+//     const pool = await poolPromise;
+
+//     await pool
+//       .request()
+//       .input('name', sql.NVarChar, name)
+//       .input('categoryId', sql.Int, categoryId || null)
+//       .input('subcategoryId', sql.Int, subcategoryId)
+//       .query(`
+//         INSERT INTO Brands (Name, CategoryID, SubcategoryID, CreatedAt)
+//         VALUES (@name, @categoryId, @subcategoryId, GETDATE());
+//       `);
+
+//     res.status(201).json({ message: 'Brand created successfully' });
+//   } catch (err) {
+//     console.error('❌ POST /brands:', err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// /**
+//  * ===============================
+//  *  PUT /api/brands/:id  → Update brand
+//  * ===============================
+//  * body: { name, categoryId, subcategoryId }
+//  */
+// router.put('/:id', async (req, res) => {
+//   const { id } = req.params;
+//   const { name, categoryId, subcategoryId } = req.body;
+
+//   if (!name || !subcategoryId) {
+//     return res
+//       .status(400)
+//       .json({ message: 'Name and subcategoryId are required' });
+//   }
+
+//   try {
+//     const pool = await poolPromise;
+
+//     await pool
+//       .request()
+//       .input('id', sql.Int, id)
+//       .input('name', sql.NVarChar, name)
+//       .input('categoryId', sql.Int, categoryId || null)
+//       .input('subcategoryId', sql.Int, subcategoryId)
+//       .query(`
+//         UPDATE Brands 
+//         SET 
+//           Name = @name,
+//           CategoryID = @categoryId,
+//           SubcategoryID = @subcategoryId
+//         WHERE BrandID = @id;
+//       `);
+
+//     res.json({ message: 'Brand updated successfully' });
+//   } catch (err) {
+//     console.error('❌ PUT /brands:', err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// /**
+//  * ===============================
+//  *  DELETE /api/brands/:id
+//  * ===============================
+//  */
+// router.delete('/:id', async (req, res) => {
+//   const { id } = req.params;
+
+//   try {
+//     const pool = await poolPromise;
+
+//     await pool
+//       .request()
+//       .input('id', sql.Int, id)
+//       .query(`DELETE FROM Brands WHERE BrandID = @id;`);
+
+//     res.json({ message: 'Brand deleted successfully' });
+//   } catch (err) {
+//     console.error('❌ DELETE /brands:', err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// module.exports = router;
 
 
 // require("dotenv").config();

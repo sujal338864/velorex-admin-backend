@@ -1,124 +1,248 @@
-
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { sql, poolPromise } = require('../models/db');  // ✅ Import DB
+const pool = require("../models/db");
 
-// ✅ GET SUBCATEGORIES BY CATEGORY ID
-// Example: GET /api/user/subcategories?categoryId=1
-// =====================================================
-// ✅ GET SUBCATEGORIES (Filter by categoryId if provided)
-// =====================================================
-// ✅ GET all subcategories (filtered by categoryId if provided)
+/* =====================================================
+   GET all subcategories (optional filter by categoryId)
+   GET /api/subcategories?categoryId=1
+   ===================================================== */
 router.get("/", async (req, res) => {
   try {
     const { categoryId } = req.query;
-    const pool = await poolPromise;
 
     let query = `
-      SELECT 
-        s.SubcategoryID AS SubcategoryID,
-        s.Name AS Name,
-        s.CategoryID AS CategoryID,
-        c.Name AS CategoryName,
-        s.CreatedAt
-      FROM Subcategories s
-      INNER JOIN Categories c ON s.CategoryID = c.CategoryID
+      SELECT
+        s.subcategory_id AS "SubcategoryID",
+        s.name AS "Name",
+        s.category_id AS "CategoryID",
+        c.name AS "CategoryName",
+        s.created_at AS "CreatedAt"
+      FROM subcategories s
+      INNER JOIN categories c ON s.category_id = c.category_id
     `;
 
-    if (categoryId) query += ` WHERE s.CategoryID = @CategoryID`;
+    const values = [];
+    if (categoryId) {
+      query += ` WHERE s.category_id = $1`;
+      values.push(categoryId);
+    }
 
-    const request = pool.request();
-    if (categoryId) request.input("CategoryID", sql.Int, categoryId);
-
-    const result = await request.query(query);
-    res.json(result.recordset);
+    const { rows } = await pool.query(query, values);
+    res.json(rows);
   } catch (err) {
     console.error("❌ Error fetching subcategories:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-
-// =============================
-// ✅ Add Subcategory
-// Endpoint: POST /api/subcategories
-// =============================
-router.post('/', async (req, res) => {
+/* =============================
+   ADD subcategory
+   POST /api/subcategories
+   ============================= */
+router.post("/", async (req, res) => {
   const { name, categoryId } = req.body;
 
   if (!name || !categoryId) {
-    return res.status(400).json({ error: 'Name & CategoryId required' });
+    return res.status(400).json({ error: "Name & CategoryId required" });
   }
 
   try {
-    const pool = await poolPromise;
-    await pool.request()
-      .input('Name', sql.NVarChar, name)
-      .input('CategoryID', sql.Int, categoryId)
-      .query(`
-        INSERT INTO Subcategories (Name, CategoryID, CreatedAt)
-        VALUES (@Name, @CategoryID, GETDATE())
-      `);
+    await pool.query(
+      `
+      INSERT INTO subcategories (name, category_id, created_at)
+      VALUES ($1, $2, NOW())
+      `,
+      [name, categoryId]
+    );
 
-    res.status(201).json({ message: '✅ Subcategory created' });
+    res.status(201).json({ message: "✅ Subcategory created" });
   } catch (err) {
-    console.error('❌ ADD subcategory error:', err);
+    console.error("❌ ADD subcategory error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// =============================
-// ✅ Update Subcategory
-// Endpoint: PUT /api/subcategories/:id
-// =============================
-router.put('/:id', async (req, res) => {
+/* =============================
+   UPDATE subcategory
+   PUT /api/subcategories/:id
+   ============================= */
+router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const { name, categoryId } = req.body;
 
   if (!name || !categoryId) {
-    return res.status(400).json({ error: 'Name & CategoryId required' });
+    return res.status(400).json({ error: "Name & CategoryId required" });
   }
 
   try {
-    const pool = await poolPromise;
-    await pool.request()
-      .input('ID', sql.Int, id)
-      .input('Name', sql.NVarChar, name)
-      .input('CategoryID', sql.Int, categoryId)
-      .query(`
-        UPDATE Subcategories
-        SET Name = @Name, CategoryID = @CategoryID
-        WHERE SubcategoryID = @ID
-      `);
+    const result = await pool.query(
+      `
+      UPDATE subcategories
+      SET name = $1, category_id = $2
+      WHERE subcategory_id = $3
+      `,
+      [name, categoryId, id]
+    );
 
-    res.json({ message: '✅ Subcategory updated' });
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Subcategory not found" });
+    }
+
+    res.json({ message: "✅ Subcategory updated" });
   } catch (err) {
-    console.error('❌ UPDATE subcategory error:', err);
+    console.error("❌ UPDATE subcategory error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// =============================
-// ✅ Delete Subcategory
-// Endpoint: DELETE /api/subcategories/:id
-// =============================
-router.delete('/:id', async (req, res) => {
+/* =============================
+   DELETE subcategory
+   DELETE /api/subcategories/:id
+   ============================= */
+router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-    const pool = await poolPromise;
-    await pool.request()
-      .input('ID', sql.Int, id)
-      .query(`DELETE FROM Subcategories WHERE SubcategoryID = @ID`);
+    const result = await pool.query(
+      `DELETE FROM subcategories WHERE subcategory_id = $1`,
+      [id]
+    );
 
-    res.json({ message: '✅ Subcategory deleted' });
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Subcategory not found" });
+    }
+
+    res.json({ message: "✅ Subcategory deleted" });
   } catch (err) {
-    console.error('❌ DELETE subcategory error:', err);
+    console.error("❌ DELETE subcategory error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 module.exports = router;
+
+
+
+// const express = require('express');
+// const router = express.Router();
+// const { sql, poolPromise } = require('../models/db');  // ✅ Import DB
+
+// // ✅ GET SUBCATEGORIES BY CATEGORY ID
+// // Example: GET /api/user/subcategories?categoryId=1
+// // =====================================================
+// // ✅ GET SUBCATEGORIES (Filter by categoryId if provided)
+// // =====================================================
+// // ✅ GET all subcategories (filtered by categoryId if provided)
+// router.get("/", async (req, res) => {
+//   try {
+//     const { categoryId } = req.query;
+//     const pool = await poolPromise;
+
+//     let query = `
+//       SELECT 
+//         s.SubcategoryID AS SubcategoryID,
+//         s.Name AS Name,
+//         s.CategoryID AS CategoryID,
+//         c.Name AS CategoryName,
+//         s.CreatedAt
+//       FROM Subcategories s
+//       INNER JOIN Categories c ON s.CategoryID = c.CategoryID
+//     `;
+
+//     if (categoryId) query += ` WHERE s.CategoryID = @CategoryID`;
+
+//     const request = pool.request();
+//     if (categoryId) request.input("CategoryID", sql.Int, categoryId);
+
+//     const result = await request.query(query);
+//     res.json(result.recordset);
+//   } catch (err) {
+//     console.error("❌ Error fetching subcategories:", err);
+//     res.status(500).json({ error: "Internal server error" });
+//   }
+// });
+
+
+// // =============================
+// // ✅ Add Subcategory
+// // Endpoint: POST /api/subcategories
+// // =============================
+// router.post('/', async (req, res) => {
+//   const { name, categoryId } = req.body;
+
+//   if (!name || !categoryId) {
+//     return res.status(400).json({ error: 'Name & CategoryId required' });
+//   }
+
+//   try {
+//     const pool = await poolPromise;
+//     await pool.request()
+//       .input('Name', sql.NVarChar, name)
+//       .input('CategoryID', sql.Int, categoryId)
+//       .query(`
+//         INSERT INTO Subcategories (Name, CategoryID, CreatedAt)
+//         VALUES (@Name, @CategoryID, GETDATE())
+//       `);
+
+//     res.status(201).json({ message: '✅ Subcategory created' });
+//   } catch (err) {
+//     console.error('❌ ADD subcategory error:', err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// // =============================
+// // ✅ Update Subcategory
+// // Endpoint: PUT /api/subcategories/:id
+// // =============================
+// router.put('/:id', async (req, res) => {
+//   const { id } = req.params;
+//   const { name, categoryId } = req.body;
+
+//   if (!name || !categoryId) {
+//     return res.status(400).json({ error: 'Name & CategoryId required' });
+//   }
+
+//   try {
+//     const pool = await poolPromise;
+//     await pool.request()
+//       .input('ID', sql.Int, id)
+//       .input('Name', sql.NVarChar, name)
+//       .input('CategoryID', sql.Int, categoryId)
+//       .query(`
+//         UPDATE Subcategories
+//         SET Name = @Name, CategoryID = @CategoryID
+//         WHERE SubcategoryID = @ID
+//       `);
+
+//     res.json({ message: '✅ Subcategory updated' });
+//   } catch (err) {
+//     console.error('❌ UPDATE subcategory error:', err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// // =============================
+// // ✅ Delete Subcategory
+// // Endpoint: DELETE /api/subcategories/:id
+// // =============================
+// router.delete('/:id', async (req, res) => {
+//   const { id } = req.params;
+
+//   try {
+//     const pool = await poolPromise;
+//     await pool.request()
+//       .input('ID', sql.Int, id)
+//       .query(`DELETE FROM Subcategories WHERE SubcategoryID = @ID`);
+
+//     res.json({ message: '✅ Subcategory deleted' });
+//   } catch (err) {
+//     console.error('❌ DELETE subcategory error:', err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// module.exports = router;
 
 
 // const express = require('express');

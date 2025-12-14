@@ -1,31 +1,34 @@
-
-const express = require('express');
-const sql = require('mssql');
+const express = require("express");
 const router = express.Router();
-const { poolPromise } = require('../models/db'); // Make sure this points to your db config
+const pool = require("../models/db"); // pg Pool
 
 // ---------------- GET all variant types ----------------
-router.get('/', async (req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const pool = await poolPromise;
-    const result = await pool.request()
-      .query("SELECT * FROM VariantTypes ORDER BY VariantTypeID DESC");
-    res.json(result.recordset);
+    const result = await pool.query(`
+      SELECT *
+      FROM variant_types
+      ORDER BY variant_type_id DESC
+    `);
+
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // ---------------- POST add new variant type ----------------
-router.post('/', async (req, res) => {
+router.post("/", async (req, res) => {
   try {
     const { variantName, variantType } = req.body;
-    const pool = await poolPromise;
 
-    await pool.request()
-      .input("VariantName", sql.NVarChar, variantName)
-      .input("VariantType", sql.NVarChar, variantType)
-      .query("INSERT INTO VariantTypes (VariantName, VariantType, AddedDate) VALUES (@VariantName, @VariantType, GETDATE())");
+    await pool.query(
+      `
+      INSERT INTO variant_types (variant_name, variant_type, added_date)
+      VALUES ($1, $2, NOW())
+      `,
+      [variantName, variantType]
+    );
 
     res.status(201).json({ success: true });
   } catch (err) {
@@ -34,17 +37,20 @@ router.post('/', async (req, res) => {
 });
 
 // ---------------- PUT update variant type ----------------
-router.put('/:id', async (req, res) => {
+router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { variantName, variantType } = req.body;
-    const pool = await poolPromise;
 
-    await pool.request()
-      .input("id", sql.Int, id)
-      .input("VariantName", sql.NVarChar, variantName)
-      .input("VariantType", sql.NVarChar, variantType)
-      .query("UPDATE VariantTypes SET VariantName = @VariantName, VariantType = @VariantType WHERE VariantTypeID = @id");
+    await pool.query(
+      `
+      UPDATE variant_types
+      SET variant_name = $1,
+          variant_type = $2
+      WHERE variant_type_id = $3
+      `,
+      [variantName, variantType, id]
+    );
 
     res.json({ success: true });
   } catch (err) {
@@ -53,14 +59,14 @@ router.put('/:id', async (req, res) => {
 });
 
 // ---------------- DELETE variant type ----------------
-router.delete('/:id', async (req, res) => {
+router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const pool = await poolPromise;
 
-    await pool.request()
-      .input('id', sql.Int, id)
-      .query("DELETE FROM VariantTypes WHERE VariantTypeID = @id");
+    await pool.query(
+      `DELETE FROM variant_types WHERE variant_type_id = $1`,
+      [id]
+    );
 
     res.json({ success: true });
   } catch (err) {
@@ -69,6 +75,80 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+
+
+
+
+// const express = require('express');
+// const sql = require('mssql');
+// const router = express.Router();
+// const { poolPromise } = require('../models/db'); // Make sure this points to your db config
+
+// // ---------------- GET all variant types ----------------
+// router.get('/', async (req, res) => {
+//   try {
+//     const pool = await poolPromise;
+//     const result = await pool.request()
+//       .query("SELECT * FROM VariantTypes ORDER BY VariantTypeID DESC");
+//     res.json(result.recordset);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// // ---------------- POST add new variant type ----------------
+// router.post('/', async (req, res) => {
+//   try {
+//     const { variantName, variantType } = req.body;
+//     const pool = await poolPromise;
+
+//     await pool.request()
+//       .input("VariantName", sql.NVarChar, variantName)
+//       .input("VariantType", sql.NVarChar, variantType)
+//       .query("INSERT INTO VariantTypes (VariantName, VariantType, AddedDate) VALUES (@VariantName, @VariantType, GETDATE())");
+
+//     res.status(201).json({ success: true });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// // ---------------- PUT update variant type ----------------
+// router.put('/:id', async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const { variantName, variantType } = req.body;
+//     const pool = await poolPromise;
+
+//     await pool.request()
+//       .input("id", sql.Int, id)
+//       .input("VariantName", sql.NVarChar, variantName)
+//       .input("VariantType", sql.NVarChar, variantType)
+//       .query("UPDATE VariantTypes SET VariantName = @VariantName, VariantType = @VariantType WHERE VariantTypeID = @id");
+
+//     res.json({ success: true });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// // ---------------- DELETE variant type ----------------
+// router.delete('/:id', async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const pool = await poolPromise;
+
+//     await pool.request()
+//       .input('id', sql.Int, id)
+//       .query("DELETE FROM VariantTypes WHERE VariantTypeID = @id");
+
+//     res.json({ success: true });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// module.exports = router;
 
 
 

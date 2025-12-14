@@ -1,34 +1,32 @@
-
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { sql, poolPromise } = require('../models/db');
+const pool = require("../models/db");
 
 // ✅ Get all categories
-router.get('/', async (req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const pool = await poolPromise;
-    const result = await pool.request()
-      .query('SELECT CategoryID, Name, ImageUrl, CreatedAt FROM Categories ORDER BY CreatedAt DESC');
-    res.json(result.recordset);
+    const result = await pool.query(
+      `SELECT category_id, name, image_url, created_at
+       FROM categories
+       ORDER BY created_at DESC`
+    );
+    res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ✅ Add category with image URL
-router.post('/', async (req, res) => {
+// ✅ Add category
+router.post("/", async (req, res) => {
   const { name, imageUrl } = req.body;
   try {
-    const pool = await poolPromise;
-    await pool.request()
-      .input('name', sql.NVarChar, name)
-      .input('imageUrl', sql.NVarChar, imageUrl)
-      .query(`
-        INSERT INTO Categories (Name, ImageUrl)
-        VALUES (@name, @imageUrl)
-      `);
-    res.status(201).json({ message: 'Category added successfully' });
+    await pool.query(
+      `INSERT INTO categories (name, image_url)
+       VALUES ($1, $2)`,
+      [name, imageUrl]
+    );
+    res.status(201).json({ message: "Category added successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -36,21 +34,17 @@ router.post('/', async (req, res) => {
 });
 
 // ✅ Update category
-router.put('/:id', async (req, res) => {
+router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const { name, imageUrl } = req.body;
   try {
-    const pool = await poolPromise;
-    await pool.request()
-      .input('id', sql.Int, id)
-      .input('name', sql.NVarChar, name)
-      .input('imageUrl', sql.NVarChar, imageUrl)
-      .query(`
-        UPDATE Categories 
-        SET Name = @name, ImageUrl = @imageUrl 
-        WHERE CategoryID = @id
-      `);
-    res.json({ message: 'Category updated successfully' });
+    await pool.query(
+      `UPDATE categories
+       SET name = $1, image_url = $2
+       WHERE category_id = $3`,
+      [name, imageUrl, id]
+    );
+    res.json({ message: "Category updated successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -58,14 +52,14 @@ router.put('/:id', async (req, res) => {
 });
 
 // ✅ Delete category
-router.delete('/:id', async (req, res) => {
+router.delete("/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    const pool = await poolPromise;
-    await pool.request()
-      .input('id', sql.Int, id)
-      .query('DELETE FROM Categories WHERE CategoryID = @id');
-    res.json({ message: 'Category deleted successfully' });
+    await pool.query(
+      `DELETE FROM categories WHERE category_id = $1`,
+      [id]
+    );
+    res.json({ message: "Category deleted successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
@@ -73,6 +67,83 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+
+
+
+// const express = require('express');
+// const router = express.Router();
+// const { sql, poolPromise } = require('../models/db');
+
+// // ✅ Get all categories
+// router.get('/', async (req, res) => {
+//   try {
+//     const pool = await poolPromise;
+//     const result = await pool.request()
+//       .query('SELECT CategoryID, Name, ImageUrl, CreatedAt FROM Categories ORDER BY CreatedAt DESC');
+//     res.json(result.recordset);
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// // ✅ Add category with image URL
+// router.post('/', async (req, res) => {
+//   const { name, imageUrl } = req.body;
+//   try {
+//     const pool = await poolPromise;
+//     await pool.request()
+//       .input('name', sql.NVarChar, name)
+//       .input('imageUrl', sql.NVarChar, imageUrl)
+//       .query(`
+//         INSERT INTO Categories (Name, ImageUrl)
+//         VALUES (@name, @imageUrl)
+//       `);
+//     res.status(201).json({ message: 'Category added successfully' });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// // ✅ Update category
+// router.put('/:id', async (req, res) => {
+//   const { id } = req.params;
+//   const { name, imageUrl } = req.body;
+//   try {
+//     const pool = await poolPromise;
+//     await pool.request()
+//       .input('id', sql.Int, id)
+//       .input('name', sql.NVarChar, name)
+//       .input('imageUrl', sql.NVarChar, imageUrl)
+//       .query(`
+//         UPDATE Categories 
+//         SET Name = @name, ImageUrl = @imageUrl 
+//         WHERE CategoryID = @id
+//       `);
+//     res.json({ message: 'Category updated successfully' });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// // ✅ Delete category
+// router.delete('/:id', async (req, res) => {
+//   const { id } = req.params;
+//   try {
+//     const pool = await poolPromise;
+//     await pool.request()
+//       .input('id', sql.Int, id)
+//       .query('DELETE FROM Categories WHERE CategoryID = @id');
+//     res.json({ message: 'Category deleted successfully' });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// module.exports = router;
 
 // const express = require('express');
 // const router = express.Router();
