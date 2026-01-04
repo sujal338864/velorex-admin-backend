@@ -7,10 +7,39 @@ const pool = new Pool({
   user: process.env.SUPABASE_DB_USER,
   password: process.env.SUPABASE_DB_PASSWORD,
   database: process.env.SUPABASE_DB_NAME,
+
   ssl: { rejectUnauthorized: false },
+
+  // ✅ SAFE for Supabase Pooler
+  max: 3,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
+});
+
+pool.on("connect", () => {
+  console.log("✅ PostgreSQL connected");
+});
+
+pool.on("error", (err) => {
+  console.error("🔥 PG pool error:", err);
 });
 
 module.exports = pool;
+
+
+// const { Pool } = require("pg");
+// require("dotenv").config();
+
+// const pool = new Pool({
+//   host: process.env.SUPABASE_DB_HOST,
+//   port: Number(process.env.SUPABASE_DB_PORT),
+//   user: process.env.SUPABASE_DB_USER,
+//   password: process.env.SUPABASE_DB_PASSWORD,
+//   database: process.env.SUPABASE_DB_NAME,
+//   ssl: { rejectUnauthorized: false },
+// });
+
+// module.exports = pool;
 
 
 

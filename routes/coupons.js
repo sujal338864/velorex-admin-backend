@@ -7,13 +7,30 @@ const pool = require("../models/db");
 ========================= */
 router.get("/", async (_, res) => {
   try {
-    const { rows } = await pool.query(`SELECT * FROM coupons ORDER BY coupon_id DESC`);
+    const { rows } = await pool.query(`
+      SELECT
+        coupon_id        AS "CouponID",
+        code             AS "Code",
+        discount_type    AS "DiscountType",
+        discount_amount  AS "DiscountAmount",
+        minimum_purchase AS "MinimumPurchase",
+        start_date       AS "StartDate",
+        end_date         AS "EndDate",
+        status           AS "Status",
+        category_id      AS "CategoryID",
+        subcategory_id   AS "SubcategoryID",
+        product_id       AS "ProductID"
+      FROM coupons
+      ORDER BY coupon_id DESC
+    `);
+
     res.status(200).json(rows);
   } catch (err) {
     console.error("❌ GET /coupons:", err);
     res.status(500).json({ error: err.message });
   }
 });
+
 
 /* =========================
    UPDATE COUPON

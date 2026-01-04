@@ -6,7 +6,11 @@ const pool = require("../models/db"); // pg Pool
 router.get("/", async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT *
+      SELECT
+        variant_type_id AS "VariantTypeID",
+        variant_name AS "VariantName",
+        variant_type AS "VariantType",
+        added_date AS "AddedDate"
       FROM variant_types
       ORDER BY variant_type_id DESC
     `);

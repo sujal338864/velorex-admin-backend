@@ -12,11 +12,11 @@ router.get("/", async (req, res) => {
 
     let query = `
       SELECT
-        s.subcategory_id AS "SubcategoryID",
-        s.name AS "Name",
-        s.category_id AS "CategoryID",
-        c.name AS "CategoryName",
-        s.created_at AS "CreatedAt"
+        s.subcategory_id AS subcategory_id,
+        s.name AS name,
+        s.category_id AS category_id,
+        c.name AS category_name,
+        s.created_at AS created_at
       FROM subcategories s
       INNER JOIN categories c ON s.category_id = c.category_id
     `;
@@ -34,6 +34,7 @@ router.get("/", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
 
 /* =============================
    ADD subcategory

@@ -50,6 +50,57 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+router.get("/category-summary", async (req, res) => {
+  try {
+    const q = await pool.query(`
+      SELECT
+        c.category_id,
+        c.name AS category_name,
+        COUNT(p.product_id) AS product_count
+      FROM categories c
+      LEFT JOIN products p ON p.category_id = c.category_id
+      GROUP BY c.category_id, c.name
+      ORDER BY product_count DESC;
+    `);
+
+    res.json(
+      q.rows.map(r => ({
+        categoryId: r.category_id,
+        categoryName: r.category_name,
+        productCount: Number(r.product_count),
+      }))
+    );
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+router.get("/subcategory-summary", async (req, res) => {
+  try {
+    const q = await pool.query(`
+      SELECT
+        s.subcategory_id,
+        s.name AS subcategory_name,
+        c.name AS category_name,
+        COUNT(p.product_id) AS product_count
+      FROM subcategories s
+      JOIN categories c ON s.category_id = c.category_id
+      LEFT JOIN products p ON p.subcategory_id = s.subcategory_id
+      GROUP BY s.subcategory_id, s.name, c.name
+      ORDER BY product_count DESC;
+    `);
+
+    res.json(
+      q.rows.map(r => ({
+        subcategoryId: r.subcategory_id,
+        subcategoryName: r.subcategory_name,
+        categoryName: r.category_name,
+        productCount: Number(r.product_count),
+      }))
+    );
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 /* =========================================================
    GET /api/dashboard/summary

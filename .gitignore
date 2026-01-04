@@ -1,50 +1,40 @@
 # Node backend
-node_modules
+node_modules/
 .env
-.env.local
-.env.development
-.env.production
+.env.*
+npm-debug.log*
 
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
-
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# VS Code (optional)
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# Flutter / Dart
+build/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
-.pub/
-build/
 
-# Symbolication related
-app.*.symbols
+# Web build
+build/web/
+build/flutter_assets/
+build/native_hooks/
 
-# Obfuscation related
-app.*.map.json
+# Generated platform files
+linux/flutter/
+macos/Flutter/Generated*
+windows/flutter/
 
-# Android Studio build folders
+velorex_admin_backend/linux/flutter/
+velorex_admin_backend/macos/Flutter/Generated*
+velorex_admin_backend/windows/flutter/
+
+# Android
 android/app/debug
 android/app/profile
 android/app/release
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db

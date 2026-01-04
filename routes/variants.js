@@ -1,21 +1,23 @@
 const express = require("express");
 const router = express.Router();
-const pool = require("../models/db"); // pg Pool
+const pool = require("../models/db");
 
 // -------------------------------------------------------------
-// GET: ALL VARIANTS
+// GET: ALL VARIANTS (WITH TYPE NAME)
 // -------------------------------------------------------------
 router.get("/", async (req, res) => {
   try {
     const { rows } = await pool.query(`
-      SELECT 
-        variant_id AS "VariantID",
-        variant AS "Variant",
-        variant_type AS "VariantType",
-        variant_type_id AS "VariantTypeID",
-        added_date AS "AddedDate"
-      FROM variants
-      ORDER BY variant_id DESC
+      SELECT
+        v.variant_id        AS "VariantID",
+        v.variant           AS "Variant",
+        vt.variant_name     AS "VariantType",   -- ✅ THIS IS THE FIX
+        v.variant_type_id   AS "VariantTypeID",
+        v.added_date        AS "AddedDate"
+      FROM variants v
+      LEFT JOIN variant_types vt
+        ON vt.variant_type_id = v.variant_type_id
+      ORDER BY v.variant_id DESC
     `);
 
     res.json(rows);
@@ -24,8 +26,10 @@ router.get("/", async (req, res) => {
   }
 });
 
+
+
 // -------------------------------------------------------------
-// GET VARIANTS BY TYPE
+// GET: VARIANTS BY TYPE ID
 // -------------------------------------------------------------
 router.get("/by-type/:typeId", async (req, res) => {
   try {
@@ -34,12 +38,13 @@ router.get("/by-type/:typeId", async (req, res) => {
     const { rows } = await pool.query(
       `
       SELECT 
-        variant_id AS "VariantID",
-        variant AS "Variant",
-        variant_type_id AS "VariantTypeID"
-      FROM variants
-      WHERE variant_type_id = $1
-      ORDER BY variant_id DESC
+        v.variant_id AS "VariantID",
+        v.variant    AS "Variant",
+        v.variant_type_id AS "VariantTypeID",
+        v.added_date AS "AddedDate"
+      FROM variants v
+      WHERE v.variant_type_id = $1
+      ORDER BY v.variant_id DESC
       `,
       [typeId]
     );
@@ -58,29 +63,30 @@ router.post("/", async (req, res) => {
     const { Variant, VariantTypeID } = req.body;
 
     if (!Variant || !VariantTypeID) {
-      return res.status(400).json({ error: "Variant & VariantTypeID required" });
+      return res.status(400).json({
+        error: "Variant and VariantTypeID are required",
+      });
     }
 
-    const typeRes = await pool.query(
-      `SELECT variant_type FROM variant_types WHERE variant_type_id = $1`,
+    // Validate Variant Type
+    const typeCheck = await pool.query(
+      `SELECT 1 FROM variant_types WHERE variant_type_id = $1`,
       [VariantTypeID]
     );
 
-    if (typeRes.rows.length === 0) {
+    if (typeCheck.rows.length === 0) {
       return res.status(400).json({ error: "Invalid VariantTypeID" });
     }
 
-    const typeName = typeRes.rows[0].variant_type;
-
     await pool.query(
       `
-      INSERT INTO variants (variant, variant_type, variant_type_id, added_date)
-      VALUES ($1, $2, $3, NOW())
+      INSERT INTO variants (variant, variant_type_id, added_date)
+      VALUES ($1, $2, NOW())
       `,
-      [Variant, typeName, VariantTypeID]
+      [Variant, VariantTypeID]
     );
 
-    res.status(201).json({ message: "Variant value added" });
+    res.status(201).json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -94,44 +100,58 @@ router.put("/:id", async (req, res) => {
     const { id } = req.params;
     const { Variant, VariantTypeID } = req.body;
 
-    const typeRes = await pool.query(
-      `SELECT variant_type FROM variant_types WHERE variant_type_id = $1`,
+    if (!Variant || !VariantTypeID) {
+      return res.status(400).json({
+        error: "Variant and VariantTypeID are required",
+      });
+    }
+
+    const typeCheck = await pool.query(
+      `SELECT 1 FROM variant_types WHERE variant_type_id = $1`,
       [VariantTypeID]
     );
 
-    if (typeRes.rows.length === 0) {
+    if (typeCheck.rows.length === 0) {
       return res.status(400).json({ error: "Invalid VariantTypeID" });
     }
-
-    const typeName = typeRes.rows[0].variant_type;
 
     await pool.query(
       `
       UPDATE variants
       SET variant = $1,
-          variant_type = $2,
-          variant_type_id = $3
-      WHERE variant_id = $4
+          variant_type_id = $2
+      WHERE variant_id = $3
       `,
-      [Variant, typeName, VariantTypeID, id]
+      [Variant, VariantTypeID, id]
     );
 
-    res.json({ message: "Variant updated successfully" });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // -------------------------------------------------------------
-// DELETE: VARIANT
+// DELETE: VARIANT (FK SAFE)
 // -------------------------------------------------------------
 router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
+    const used = await pool.query(
+      `SELECT 1 FROM product_variants WHERE variant_id = $1 LIMIT 1`,
+      [id]
+    );
+
+    if (used.rows.length > 0) {
+      return res.status(400).json({
+        error: "Variant is used by products and cannot be deleted",
+      });
+    }
+
     await pool.query(`DELETE FROM variants WHERE variant_id = $1`, [id]);
 
-    res.json({ message: "Variant deleted successfully" });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
